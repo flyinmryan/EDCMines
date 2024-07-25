@@ -1,0 +1,139 @@
+﻿@page "/"
+@using System.Text.RegularExpressions
+@using Newtonsoft.Json.Linq
+@using System.Text
+@using iTextSharp.text.pdf
+@using iTextSharp.text.pdf.parser
+@using Newtonsoft.Json
+
+<PageTitle>Home</PageTitle>
+
+<script src="/scripts/parseMines.js"></script>
+
+@{
+    // Get PDF
+    string path = "C:\\Users\\micha\\source\\repos\\EDCMines\\wwwroot\\EDCMines.pdf";
+    PdfReader reader = new PdfReader(path);
+    string text = string.Empty;
+
+    // Read all lines from the PDF (simulated here as an array of strings)
+    //List<string> lines = File.ReadAllLines(path).ToList();
+    List<string> lines = new List<string>();
+    Dictionary<string, string> mines = new Dictionary<string, string>();
+    string paragraph = string.Empty;
+
+    for (int page = 8; page <= 85/* reader.NumberOfPages */; page++)
+    {
+        string[] currentPage = PdfTextExtractor.GetTextFromPage(reader, page).Split('\n');
+        foreach (string line in currentPage)
+        {
+            lines.Add(line);
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                paragraph += Encoding.UTF8.GetString(ASCIIEncoding.Convert(Encoding.Default, Encoding.UTF8, Encoding.Default.GetBytes(line))) + "\n ";
+            } else if (string.IsNullOrWhiteSpace(line) && !string.IsNullOrWhiteSpace(paragraph))
+            {
+                mines.Add(paragraph.Substring(0, paragraph.IndexOf("\n")), paragraph);
+                paragraph = string.Empty;
+            }
+        }
+        //string previousLine = string.Empty;
+    }
+
+    // List to store relevant results
+    List<string> relevantDescriptions = new List<string>();
+
+    // Regex to match patterns like "X miles direction of Location"
+    Regex pattern = new Regex(@"\b(\d+(\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|one[- ]and[- ]one[- ]half|two[- ]and[- ]one[- ]half|three[- ]and[- ]one[- ]half|four[- ]and[- ]one[- ]half|five[- ]and[- ]one[- ]half|six[- ]and[- ]one[- ]half|seven[- ]and[- ]one[- ]half|eight[- ]and[- ]one[- ]half|nine[- ]and[- ]one[- ]half|ten[- ]and[- ]one|eleven[- ]and[- ]one[- ]half|twelve[- ]and[- ]one[- ]half) miles? (north|northeast|east|southeast|south|southwest|west|northwest) of [A-Za-z\s]+", RegexOptions.IgnoreCase);
+    Regex pattern2 = new Regex(@"one-half", RegexOptions.IgnoreCase);
+    lines = new List<string>();
+    //for (int i = 0; i < lines.Count; i++)
+    for (int i = 0; i < lines.Count; i++)
+    {
+        string combinedLine = lines[i];
+
+        // Check if the current line contains a partial pattern
+        if (pattern.IsMatch(combinedLine))
+        {
+            // Add the next line if the current line seems to be cut off
+            if (i + 1 < lines.Count && !lines[i + 1].Contains("mile"))
+            {
+                combinedLine += " " + lines[i + 1].Trim();
+            }
+
+            // Match the pattern and add to the list
+            Match match = pattern.Match(combinedLine);
+            if (match.Success)
+            {
+                // Match match2 = pattern2.Match(combinedLine);
+                // if (match2.Success)
+                // {
+                // combinedLine = combinedLine.Replace("one-half", "a half");
+                // }
+                relevantDescriptions.Add(match.Value.Trim().Replace("one-half", "a half") + " California");
+            }
+        }
+    }
+
+    HttpClient client = new HttpClient();
+    string apiKey = "AIzaSyDl8UYVHoy-dMWmNQgho8W_9nos9QY53Kw";
+    string locationCoordinates = string.Empty;
+
+    // Print all relevant descriptions
+    foreach (string location in relevantDescriptions)
+
+        {
+            string url = $"https://maps.googleapis.com/maps/api/geocode/json?address={Uri.EscapeDataString(location)}&key={apiKey}";
+            Tuple<double, double> coordinates = null;
+            
+            Task<string> response = client.GetStringAsync(url);
+            string responseText = response.Result;
+            var json = JObject.Parse(responseText);
+
+            if (json["status"].ToString() == "OK")
+            {
+                var result = json["results"][0]["geometry"]["location"];
+                double lat = (double)result["lat"];
+                double lng = (double)result["lng"];
+                coordinates = Tuple.Create(lat, lng);
+            }
+            if (coordinates != null)
+            {
+                Console.WriteLine($"{location}: Lat = {coordinates.Item1}, Lng = {coordinates.Item2}");
+                locationCoordinates = $"{coordinates.Item1},{coordinates.Item2}";
+            }
+            else
+            {
+                Console.WriteLine($"Could not get coordinates for: {location}");
+            }
+        }
+
+    //     text += PdfTextExtractor.GetTextFromPage(reader, page);
+    //     string previousLine = string.Empty;
+    //     foreach (string currentLine in text.Split('\n'))
+    //     {
+    //         string lineLower = currentLine.ToLower();
+    //         if (lineLower.Contains("mile"))
+    //         {
+    //             //string twoLines = previousLine + ("\n") + currentLine;
+    //             // twoLines = twoLines.Substring(
+    //             //     twoLines.IndexOf("mile"),
+    //             //     twoLines.LastIndexOf('.') - twoLines.IndexOf("mile")
+    //             // );
+    //             Console.WriteLine(currentLine);
+    //             Console.WriteLine("\n");
+    //             // int start = line.IndexOf("mile");
+    //             // declare a list of words in the line
+    //             // List<string> words = new List<string>();
+    //             // split the line into words
+    //             // words = line.Split(' ').ToList();
+    //             // declare the length of the list
+    //             // int length = words.Count;
+
+    //         }
+    //         previousLine = currentLine;
+    // }
+    
+    //reader.Close();
+    }
+}
